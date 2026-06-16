@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  db:
+    image: mariadb:10.6
+    container_name: telecom_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: midpoint_db
+      MYSQL_USER: midpoint
+      MYSQL_PASSWORD: midpoint123
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3306:3306"          # expuesto al host por si quieres acceder desde fuera
+    networks:
+      - telecom_net
+    restart: unless-stopped
+
+  midpoint:
+    image: evolveum/midpoint:latest
+    container_name: telecom_midpoint
+    depends_on:
+      - db
+    environment:
+      MIDPOINT_DATABASE_TYPE: mariadb
+      MIDPOINT_DATABASE_HOST: db
+      MIDPOINT_DATABASE_NAME: midpoint_db
+      MIDPOINT_DATABASE_USER: midpoint
+      MIDPOINT_DATABASE_PASSWORD: midpoint123
+    volumes:
+      - midpoint_data:/opt/midpoint/var
+      - ./midpoint/import:/opt/midpoint/import    # archivos de recurso se importan automáticamente
+    ports:
+      - "8080:8080"
+    networks:
+      - telecom_net
+    restart: unless-stopped
+
+  asterisk:
+    build: ./asterisk        # usa Dockerfile local
+    container_name: telecom_asterisk
+    depends_on:
+      - db
+      - midpoint
+    volumes:
+      - asterisk_conf:/etc/asterisk
+      - asterisk_logs:/var/log/asterisk
+      - ./asterisk/scripts:/scripts   # scripts compartidos con midPoint (si usas docker exec)
+    ports:
+      - "5060:5060/udp"
+      - "5061:5061/tcp"
+      - "10000-10100:10000-10100/udp"
+    networks:
+      - telecom_net
+    restart: unless-stopped
+
+  # Opcional: SonarQube para calidad
+  sonarqube:
+    image: sonarqube:community
+    container_name: telecom_sonar
+    ports:
+      - "9000:9000"
+    networks:
+      - telecom_net
+    restart: unless-stopped
+
+networks:
+  telecom_net:
+    driver: bridge
+
+volumes:
+  db_data:
+  midpoint_data:
+  asterisk_conf:
+  asterisk_logs:
